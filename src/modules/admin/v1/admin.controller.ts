@@ -1,13 +1,15 @@
 import type { Request, Response } from 'express';
 import type { AuthRequest } from '../../../middlewares/auth.middleware.js';
 import { sendSuccess } from '../../../utils/response.js';
+import { contactService } from '../../contact/contact.service.js';
 import { adminService } from '../admin.service.js';
-import type { ActivityQuery, IntroductionsQuery, RequestsQuery } from './admin.schema.js';
+import type { ActivityQuery, ContactSubmissionsQuery, IntroductionsQuery, RequestsQuery } from './admin.schema.js';
 
 // Query and params are already parsed by validate().
 const queryOf = <T>(req: Request) => req.query as unknown as T;
 const requestIdOf = (req: Request) => (req.params as { requestId: string }).requestId;
 const introIdOf = (req: Request) => (req.params as { introId: string }).introId;
+const submissionIdOf = (req: Request) => (req.params as { submissionId: string }).submissionId;
 const adminOf = (req: Request) => (req as AuthRequest).user;
 
 export const getDashboard = async (_req: Request, res: Response) => {
@@ -81,4 +83,20 @@ export const listUsers = async (req: Request, res: Response) => {
 export const listActivity = async (req: Request, res: Response) => {
   const data = await adminService.listActivity(queryOf<ActivityQuery>(req));
   sendSuccess(res, { message: 'Activity fetched', data });
+};
+
+export const listContactSubmissions = async (req: Request, res: Response) => {
+  const { page, status } = queryOf<ContactSubmissionsQuery>(req);
+  const data = await contactService.listForAdmin(page, status);
+  sendSuccess(res, { message: 'Contact submissions fetched', data });
+};
+
+export const getContactSubmission = async (req: Request, res: Response) => {
+  const data = await contactService.getForAdmin(submissionIdOf(req));
+  sendSuccess(res, { message: 'Contact submission fetched', data });
+};
+
+export const changeContactStatus = async (req: Request, res: Response) => {
+  const data = await contactService.setStatus(adminOf(req), submissionIdOf(req), req.body.status);
+  sendSuccess(res, { message: 'Contact submission updated', data });
 };

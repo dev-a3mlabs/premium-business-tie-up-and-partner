@@ -104,6 +104,7 @@ List endpoints take `?page=1` (default `1`, 25 items per page).
 | 409 | `INTRO_EXISTS` | Specialist already has an open intro on this request | Show it on the specialist name field |
 | 409 | `CONFLICT` | Two requests collided on a unique value | Retry |
 | 500 | `INTERNAL_ERROR` | Unexpected server error | Keep form values; show a generic error |
+| 503 | `VERIFICATION_UNAVAILABLE` | Registration numbers couldn't be checked right now | Keep form values; ask the user to retry |
 
 ---
 
@@ -155,8 +156,11 @@ user fills all wizard steps (no API calls between steps; validate in the browser
   └─ POST /auth/company-registration   (one call: account + company + all briefs)
        ├─ 201 → save accessToken + refreshToken → show confirmation → /app
        ├─ 400 VALIDATION_ERROR → map details[].field to the step and field
-       └─ 409 EMAIL_TAKEN → back to the Account step
+       ├─ 409 EMAIL_TAKEN → back to the Account step
+       └─ 503 VERIFICATION_UNAVAILABLE → keep the form values, let the user submit again
 ```
+
+GSTIN, PAN and Udyam are verified inside this call. See [COMPANY-REGISTRATION-VERIFICATION.md](COMPANY-REGISTRATION-VERIFICATION.md).
 
 ### 2.6 Company workspace
 
@@ -183,6 +187,7 @@ user fills all wizard steps (no API calls between steps; validate in the browser
 | Companies | `GET /admin/companies?page=` |
 | Users & Access | `GET /admin/users?page=` |
 | Activity | `GET /admin/activity?visibility=&q=&type=&page=` |
+| Contact messages | `GET /admin/contact-submissions?status=&page=`, `GET /admin/contact-submissions/:submissionId`, `PATCH /admin/contact-submissions/:submissionId/status`. See [ADMIN-CONTACT-SUBMISSIONS.md](ADMIN-CONTACT-SUBMISSIONS.md) |
 
 **Admin request detail actions.** After each one, refetch `GET /admin/requests/:requestId`, because statuses can change automatically:
 
@@ -387,7 +392,33 @@ curl -X POST "$BASE/auth/company-registration" \
     "details": [{ "field": "org.registration.pan", "message": "PAN must match the GSTIN" }]
   }
 }
+
+// 400: registration numbers checked against government records. Every failing field is listed.
+{
+  "success": false,
+  "message": "Validation failed",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "details": [
+      { "field": "org.registration.gstin", "message": "GSTIN could not be verified" },
+      { "field": "org.registration.pan", "message": "PAN could not be verified" },
+      { "field": "org.registration.udyamNumber", "message": "Udyam number could not be verified" }
+    ]
+  }
+}
+
+// 503: verification is temporarily unavailable. Nothing was saved; keep the form values and let the user retry.
+{ "success": false, "message": "Verification is unavailable right now. Please try again shortly.", "error": { "code": "VERIFICATION_UNAVAILABLE" } }
 ```
+
+The registration numbers are verified before anything is saved:
+
+| Field in `details` | Message |
+|---|---|
+| `org.registration.gstin` | `GSTIN could not be verified` or `GSTIN is not active` |
+| `org.name` | `Company name must match the name registered for this GSTIN` (case, spacing, punctuation and `Pvt`/`Ltd` are ignored) |
+| `org.registration.pan` | `PAN could not be verified` |
+| `org.registration.udyamNumber` | `Udyam number could not be verified` or `Udyam registration is cancelled` (only when a Udyam number is sent) |
 
 ### 3.2 Login — `POST /auth/login`
 
@@ -1051,7 +1082,7 @@ curl "$BASE/admin/coordinators" -H "Authorization: Bearer $TOKEN"
 
 ### 6.4 Request detail — `GET /admin/requests/:requestId`
 
-The only API that returns the company's tax IDs (`company.registration`). Each call is recorded in the audit log.
+The only API that returns the company's tax IDs (`company.registration`). Each call is recorded in the audit log. `legalName` is the name on the GST registration; the `*VerifiedAt` fields are `null` for companies registered before verification existed, and `udyamVerifiedAt` is `null` when no Udyam number was given.
 
 ```sh
 curl "$BASE/admin/requests/$REQUEST_ID" -H "Authorization: Bearer $TOKEN"
@@ -1107,7 +1138,11 @@ curl "$BASE/admin/requests/$REQUEST_ID" -H "Authorization: Bearer $TOKEN"
         "entityType": "Private Limited / Public Limited",
         "gstin": "27AAPFU0939F1ZV",
         "pan": "AAPFU0939F",
-        "udyamNumber": null
+        "udyamNumber": null,
+        "legalName": "ACME FOODS PRIVATE LIMITED",
+        "gstinVerifiedAt": "2026-11-25T08:34:22.501Z",
+        "panVerifiedAt": "2026-11-25T08:34:22.501Z",
+        "udyamVerifiedAt": null
       }
     },
     "assignedAdmin": { "id": "06eb8520-1b97-4fcb-9e1c-e3d5f1fa5e1d", "name": "Nexora Admin" },

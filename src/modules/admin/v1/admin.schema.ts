@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ActivityVisibility, IntroductionStatus, RequestStatus } from '../../../generated/prisma/client.js';
+import { ActivityVisibility, ContactStatus, IntroductionStatus, RequestStatus } from '../../../generated/prisma/client.js';
 import { pageQuerySchema } from '../../../utils/pagination.js';
 
 export const requestsQuerySchema = pageQuerySchema.extend({
@@ -16,6 +16,14 @@ export const activityQuerySchema = pageQuerySchema.extend({
   type: z.string().trim().min(1).max(48).optional(),
   q: z.string().trim().min(1).max(100).optional(),
 });
+
+export const contactSubmissionsQuerySchema = pageQuerySchema.extend({
+  status: z.enum(ContactStatus).optional(),
+});
+
+export const contactSubmissionParamsSchema = z.object({ submissionId: z.uuid('Invalid submission id') });
+
+export const contactStatusSchema = z.strictObject({ status: z.enum(ContactStatus) });
 
 export const requestParamsSchema = z.object({ requestId: z.uuid('Invalid request id') });
 
@@ -43,5 +51,6 @@ export const responseSchema = z.strictObject({
 export type RequestsQuery = z.output<typeof requestsQuerySchema>;
 export type IntroductionsQuery = z.output<typeof introductionsQuerySchema>;
 export type ActivityQuery = z.output<typeof activityQuerySchema>;
+export type ContactSubmissionsQuery = z.output<typeof contactSubmissionsQuerySchema>;
 export type DraftIntroductionInput = z.output<typeof draftIntroductionSchema>;
 export type ResponseInput = z.output<typeof responseSchema>;

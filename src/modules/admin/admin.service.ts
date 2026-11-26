@@ -153,7 +153,16 @@ export const adminService = {
       request: requestService.toRequestBrief(request),
       company: {
         ...organizationService.toCompanyProfile(org),
-        registration: { entityType: org.entityType, gstin: org.gstin, pan: org.pan, udyamNumber: org.udyamNumber },
+        registration: {
+          entityType: org.entityType,
+          gstin: org.gstin,
+          pan: org.pan,
+          udyamNumber: org.udyamNumber,
+          legalName: org.legalName,
+          gstinVerifiedAt: org.gstinVerifiedAt,
+          panVerifiedAt: org.panVerifiedAt,
+          udyamVerifiedAt: org.udyamVerifiedAt,
+        },
       },
       assignedAdmin: toAdminRef(request.assignedAdmin),
       introductions: introductions.map(introductionService.toAdminIntroduction),

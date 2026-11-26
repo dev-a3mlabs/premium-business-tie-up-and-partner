@@ -5,13 +5,16 @@ import { pageQuerySchema } from '../../../utils/pagination.js';
 import {
   addNote,
   assign,
+  changeContactStatus,
   changeStatus,
   discardIntroduction,
   draftIntroduction,
+  getContactSubmission,
   getDashboard,
   getRequest,
   listActivity,
   listCompanies,
+  listContactSubmissions,
   listCoordinators,
   listIntroductions,
   listRequests,
@@ -22,6 +25,9 @@ import {
 import {
   activityQuerySchema,
   assignmentSchema,
+  contactStatusSchema,
+  contactSubmissionParamsSchema,
+  contactSubmissionsQuerySchema,
   draftIntroductionSchema,
   introductionsQuerySchema,
   introParamsSchema,
@@ -38,6 +44,7 @@ router.use(authenticate, requirePlatformAdmin);
 
 const requestParams = validate({ params: requestParamsSchema });
 const introParams = validate({ params: introParamsSchema });
+const submissionParams = validate({ params: contactSubmissionParamsSchema });
 
 router.get('/dashboard', getDashboard);
 router.get('/coordinators', listCoordinators);
@@ -62,5 +69,14 @@ router.post('/introductions/:introId/discard', introParams, discardIntroduction)
 router.get('/companies', validate({ query: pageQuerySchema }), listCompanies);
 router.get('/users', validate({ query: pageQuerySchema }), listUsers);
 router.get('/activity', validate({ query: activityQuerySchema }), listActivity);
+
+router.get('/contact-submissions', validate({ query: contactSubmissionsQuerySchema }), listContactSubmissions);
+router.get('/contact-submissions/:submissionId', submissionParams, getContactSubmission);
+router.patch(
+  '/contact-submissions/:submissionId/status',
+  submissionParams,
+  validate({ body: contactStatusSchema }),
+  changeContactStatus,
+);
 
 export default router;

@@ -12,6 +12,7 @@ import { activityRepository } from '../activity/activity.repository.js';
 import { organizationRepository } from '../organization/organization.repository.js';
 import { organizationService } from '../organization/organization.service.js';
 import { requestService } from '../request/request.service.js';
+import { verificationService } from '../verification/verification.service.js';
 import { authRepository } from './auth.repository.js';
 import type { CompanyRegistrationInput, LoginInput } from './v1/auth.schema.js';
 
@@ -24,6 +25,12 @@ const INVALID_REFRESH_TOKEN = 'Invalid or expired refresh token';
 export const isSessionActive = (session: UserSession) => !session.revokedAt && session.expiresAt > new Date();
 
 export const isUserActive = (user: User) => !user.disabledAt;
+
+const assertEmailAvailable = async (db: TxClient, email: string) => {
+  if (await authRepository.emailExists(db, email)) {
+    throw ApiError.conflict('An account with this email already exists', ERROR_CODES.EMAIL_TAKEN);
+  }
+};
 
 const startSession = async (db: TxClient, user: User, client: ClientInfo) => {
   const session = await authRepository.createSession(db, {
@@ -115,14 +122,17 @@ export const authService = {
   getSession: (user: User) => buildSessionView(user),
 
   // Account, company, owner membership, requests, events and session are created together or not at all.
+  // Registration numbers are verified before the transaction so no DB connection waits on the external check.
   registerCompany: async (input: CompanyRegistrationInput, client: ClientInfo) => {
     const { contact, org, requirements, policyVersion } = input;
-    const passwordHash = await hashPassword(contact.password);
+    await assertEmailAvailable(prisma, contact.email);
+    const [passwordHash, verification] = await Promise.all([
+      hashPassword(contact.password),
+      verificationService.verifyRegistration(org.name, org.registration),
+    ]);
 
     const result = await withTransaction(async (tx) => {
-      if (await authRepository.emailExists(tx, contact.email)) {
-        throw ApiError.conflict('An account with this email already exists', ERROR_CODES.EMAIL_TAKEN);
-      }
+      await assertEmailAvailable(tx, contact.email);
 
       const user = await authRepository.createUser(tx, {
         name: contact.contactName,
@@ -134,6 +144,7 @@ export const authService = {
       const organization = await organizationRepository.create(tx, {
         ...profile,
         ...registration,
+        ...verification,
         slug: await organizationService.uniqueSlug(tx, profile.name),
         createdById: user.id,
       });

@@ -1,0 +1,253 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum MembershipRole {
+  owner
+  admin
+  member
+}
+
+enum RequestStatus {
+  submitted
+  under_review
+  partner_search
+  shortlisted
+  intro_pending
+  intro_sent
+  discussion
+  established
+  closed
+  cancelled
+}
+
+enum IntroductionStatus {
+  pending
+  sent
+  accepted
+  declined
+}
+
+enum ActivityVisibility {
+  public
+  internal
+}
+
+enum ContactStatus {
+  new
+  resolved
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  uuid            String    @unique @default(uuid()) @db.Char(36)
+  name            String    @db.VarChar(120)
+  email           String    @unique @db.VarChar(254)
+  passwordHash    String    @map("password_hash") @db.VarChar(255)
+  isPlatformAdmin Boolean   @default(false) @map("is_platform_admin")
+  disabledAt      DateTime? @map("disabled_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  sessions               UserSession[]
+  memberships            Membership[]
+  createdOrganizations   Organization[]      @relation("OrganizationCreatedBy")
+  submittedRequests      TieUpRequest[]      @relation("RequestSubmittedBy")
+  assignedRequests       TieUpRequest[]      @relation("RequestAssignedAdmin")
+  createdIntroductions   Introduction[]      @relation("IntroductionCreatedBy")
+  sentIntroductions      Introduction[]      @relation("IntroductionSentBy")
+  respondedIntroductions Introduction[]      @relation("IntroductionRespondedBy")
+  discardedIntroductions Introduction[]      @relation("IntroductionDiscardedBy")
+  activityEvents         ActivityEvent[]
+  resolvedContacts       ContactSubmission[]
+
+  @@index([isPlatformAdmin, disabledAt, name, id])
+  @@index([createdAt, id])
+  @@map("users")
+}
+
+model UserSession {
+  id        Int       @id @default(autoincrement())
+  uuid      String    @unique @default(uuid()) @db.Char(36)
+  userId    Int       @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String?   @map("ip_address") @db.VarChar(45)
+  userAgent String?   @map("user_agent") @db.VarChar(512)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  refreshTokens RefreshToken[]
+
+  @@index([userId, revokedAt])
+  @@map("user_sessions")
+}
+
+model RefreshToken {
+  id        Int         @id @default(autoincrement())
+  sessionId Int         @map("session_id")
+  session   UserSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tokenHash String      @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime    @map("expires_at")
+  revokedAt DateTime?   @map("revoked_at")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@map("refresh_tokens")
+}
+
+model Organization {
+  id          Int      @id @default(autoincrement())
+  uuid        String   @unique @default(uuid()) @db.Char(36)
+  name        String   @db.VarChar(120)
+  slug        String   @unique @db.VarChar(160)
+  website     String   @default("") @db.VarChar(300)
+  industry    String   @db.VarChar(80)
+  size        String   @db.VarChar(10)
+  location    String   @db.VarChar(120)
+  country     String   @db.VarChar(80)
+  description String   @db.VarChar(2000)
+  entityType  String   @map("entity_type") @db.VarChar(50)
+  gstin       String   @db.VarChar(15)
+  pan         String   @db.VarChar(10)
+  udyamNumber String?  @map("udyam_number") @db.VarChar(19)
+  createdById Int      @map("created_by_id")
+  createdBy   User     @relation("OrganizationCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  memberships    Membership[]
+  requests       TieUpRequest[]
+  activityEvents ActivityEvent[]
+
+  @@index([createdAt, id])
+  @@map("organizations")
+}
+
+model Membership {
+  id        Int            @id @default(autoincrement())
+  orgId     Int            @map("org_id")
+  org       Organization   @relation(fields: [orgId], references: [id])
+  userId    Int            @map("user_id")
+  user      User           @relation(fields: [userId], references: [id])
+  role      MembershipRole
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@unique([orgId, userId])
+  @@index([userId, createdAt, orgId])
+  @@map("memberships")
+}
+
+model TieUpRequest {
+  id                 Int           @id @default(autoincrement())
+  uuid               String        @unique @default(uuid()) @db.Char(36)
+  orgId              Int           @map("org_id")
+  org                Organization  @relation(fields: [orgId], references: [id])
+  submittedById      Int           @map("submitted_by_id")
+  submittedBy        User          @relation("RequestSubmittedBy", fields: [submittedById], references: [id])
+  title              String        @db.VarChar(140)
+  categoryId         String?       @map("category_id") @db.VarChar(48)
+  subcategoryId      String?       @map("subcategory_id") @db.VarChar(48)
+  categoryLabel      String?       @map("category_label") @db.VarChar(120)
+  subcategoryLabel   String?       @map("subcategory_label") @db.VarChar(120)
+  customCategory     String?       @map("custom_category") @db.VarChar(120)
+  customSubcategory  String?       @map("custom_subcategory") @db.VarChar(120)
+  description        String        @db.VarChar(3000)
+  preferredCriteria  String        @default("") @map("preferred_criteria") @db.VarChar(1000)
+  locationPreference String        @default("") @map("location_preference") @db.VarChar(120)
+  industriesServed   Json          @map("industries_served")
+  budgetRange        String        @map("budget_range") @db.VarChar(120)
+  timeline           String        @db.VarChar(120)
+  intake             Json
+  status             RequestStatus @default(submitted)
+  assignedAdminId    Int?          @map("assigned_admin_id")
+  assignedAdmin      User?         @relation("RequestAssignedAdmin", fields: [assignedAdminId], references: [id])
+  policyVersion      String        @map("policy_version") @db.VarChar(64)
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  introductions  Introduction[]
+  activityEvents ActivityEvent[]
+
+  @@index([orgId, createdAt, id])
+  @@index([status, createdAt, id])
+  @@index([assignedAdminId, status, createdAt, id])
+  @@index([createdAt, id])
+  @@map("tie_up_requests")
+}
+
+model Introduction {
+  id             Int                @id @default(autoincrement())
+  uuid           String             @unique @default(uuid()) @db.Char(36)
+  requestId      Int                @map("request_id")
+  request        TieUpRequest       @relation(fields: [requestId], references: [id])
+  specialistName String             @map("specialist_name") @db.VarChar(120)
+  message        String             @db.VarChar(2000)
+  status         IntroductionStatus @default(pending)
+  createdById    Int                @map("created_by_id")
+  createdBy      User               @relation("IntroductionCreatedBy", fields: [createdById], references: [id])
+  sentById       Int?               @map("sent_by_id")
+  sentBy         User?              @relation("IntroductionSentBy", fields: [sentById], references: [id])
+  respondedById  Int?               @map("responded_by_id")
+  respondedBy    User?              @relation("IntroductionRespondedBy", fields: [respondedById], references: [id])
+  discardedById  Int?               @map("discarded_by_id")
+  discardedBy    User?              @relation("IntroductionDiscardedBy", fields: [discardedById], references: [id])
+  createdAt      DateTime           @default(now()) @map("created_at")
+  sentAt         DateTime?          @map("sent_at")
+  respondedAt    DateTime?          @map("responded_at")
+  discardedAt    DateTime?          @map("discarded_at")
+
+  @@index([requestId, createdAt, id])
+  @@index([status, discardedAt, createdAt, id])
+  @@index([createdAt, id])
+  @@map("introductions")
+}
+
+model ActivityEvent {
+  id            Int                @id @default(autoincrement())
+  uuid          String             @unique @default(uuid()) @db.Char(36)
+  actorId       Int?               @map("actor_id")
+  actor         User?              @relation(fields: [actorId], references: [id])
+  orgId         Int?               @map("org_id")
+  org           Organization?      @relation(fields: [orgId], references: [id])
+  requestId     Int?               @map("request_id")
+  request       TieUpRequest?      @relation(fields: [requestId], references: [id])
+  entityId      String?            @map("entity_id") @db.Char(36)
+  type          String             @db.VarChar(48)
+  message       String             @db.VarChar(2000)
+  visibility    ActivityVisibility
+  statusAtEvent RequestStatus?     @map("status_at_event")
+  metadata      Json?
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  @@index([orgId, visibility, createdAt, id])
+  @@index([requestId, visibility, createdAt, id])
+  @@index([requestId, type, createdAt, id])
+  @@index([visibility, createdAt, id])
+  @@index([createdAt, id])
+  @@map("activity_events")
+}
+
+model ContactSubmission {
+  id           Int           @id @default(autoincrement())
+  uuid         String        @unique @default(uuid()) @db.Char(36)
+  name         String        @db.VarChar(120)
+  email        String        @db.VarChar(254)
+  subject      String        @db.VarChar(48)
+  message      String        @db.VarChar(3000)
+  status       ContactStatus @default(new)
+  resolvedAt   DateTime?     @map("resolved_at")
+  resolvedById Int?          @map("resolved_by_id")
+  resolvedBy   User?         @relation(fields: [resolvedById], references: [id])
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  @@index([status, createdAt, id])
+  @@index([createdAt, id])
+  @@map("contact_submissions")
+}
